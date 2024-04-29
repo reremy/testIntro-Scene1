@@ -15,9 +15,9 @@ using namespace std;
 // Animation states
 enum AnimationState {
     INTRO,
-    TURN_ON_MONITOR,
     SCENE_1,
-    BITS_AND_BYTES_SCREEN
+    TURN_ON_MONITOR,
+    BITS_AND_BYTES_SCREEN,
 
 };
 
@@ -32,9 +32,12 @@ int delaySecondsMonitor = 5; // Delay before scaling monitor (in seconds)
 int delayBeforeZoom = 3; // Delay before starting the zoom animation (in seconds)
 
 bool firstTextDisplayed = false;
-bool loadingComplete = 0; //0=false
 int loadingTime = 0;
+int startTime =0;
+bool loadingComplete = false;
+
 AnimationState currentState = INTRO;
+
 
 double byteY = -150; // Initial y-coordinate of "Byte"
 double bitY = -150;  // Initial y-coordinate of "Bit"
@@ -59,6 +62,7 @@ void animateIntro(int value);
 void timer(int value);
 void initGL();
 void display();
+void monitor(int x, int y, int w, int h);
 
 
 
@@ -135,8 +139,16 @@ void drawBit(int x, int y, int w, int h) {
 }
 
 void displayBitsAndBytes() {
-    printf("Printing Bits and Bytes");
+    printf("Printing Bits and Bytes\n");
     glClear(GL_COLOR_BUFFER_BIT);
+    monitor(0, 0, 1000, 600);
+
+    static int moveDelay = 0;
+    if (moveDelay < FPS * 2) { // Adjust the delay duration as needed
+        moveDelay++;
+        glutSwapBuffers();
+        return;
+    }
 
     if (moveCharacter) {
         // Update y-coordinates for animation
@@ -159,10 +171,10 @@ void displayBitsAndBytes() {
     else {
         // Update y-coordinates for animation
         if (byteY < 200) {
-            byteY += 1;
+            byteY += 0.5;
         }
         if (bitY < 200) {
-            bitY += 1;
+            bitY += 0.5;
         }
 
         // Draw "Byte" and "Bit" with updated coordinates
@@ -224,11 +236,14 @@ void zoomInMonitor(int x, int y, int w, int h) {
     int monitorCenterX = SCREEN_WIDTH / 2; // X-coordinate of the center of the outer monitor
     int monitorCenterY = SCREEN_HEIGHT / 2; // Y-coordinate of the center of the outer monitor
 
+    
+
     glPushMatrix(); // Push current matrix onto stack
     glTranslatef(monitorCenterX, monitorCenterY, 0); // Translate to the center of the outer monitor
     glScalef(scaleX, scaleY, 1.0f); // Scale the monitor
     glTranslatef(-monitorCenterX, -monitorCenterY, 0); // Translate back to the original position
     monitorOnDesk(0, 0, 0, 0);
+
     glPopMatrix(); // Pop matrix from stack, restoring previous state
 }
 
@@ -316,6 +331,7 @@ void displayIntro() {
     else {
         drawBitsBytes();
     }
+    printf("Display Intro\n");
     glutSwapBuffers();
 }
 
@@ -335,22 +351,33 @@ void loadingScreen(int x, int y, int w, int h, int colorR, int colorG, int color
 
 // Function to handle display of the loading screen
 void displayLoadingScreen() {
+    static int loadingStartTime = glutGet(GLUT_ELAPSED_TIME); // Record the start time when the function is first called
+    int elapsedTime = glutGet(GLUT_ELAPSED_TIME) - loadingStartTime; // Calculate elapsed time since the function was called
+
     glClear(GL_COLOR_BUFFER_BIT);
-    if (loadingComplete) { // Display loading screen for the first 4 seconds (assuming 30 FPS)
+
+    if (elapsedTime <= 2000) { // Display loading screen for the first 2 seconds
         loadingScreen(0, 0, 1000, 600, (loadingTime % 2 == 0) ? 0 : 42, (loadingTime % 2 == 0) ? 0 : 42, (loadingTime % 2 == 0) ? 0 : 42);
         loadingString(0, 0);
-
-        monitor(0, 0, 1000, 600);
-
+        //monitor(0, 0, 1000, 600);
         printf("Displaying loading screen\n");
     }
     else {
-        printf("if masuk false\n");
+        printf("Display Monitor\n");
         monitor(0, 0, 1000, 600);
+        currentState = BITS_AND_BYTES_SCREEN;
+        glutSwapBuffers();
+        return; // Exit the function to avoid further execution of code
     }
-    currentState = BITS_AND_BYTES_SCREEN;
     glutSwapBuffers();
+}
 
+
+void updateLoadingTime(int value) {
+    // Update loading time at the frame rate
+    loadingTime++;
+    glutPostRedisplay();
+    glutTimerFunc(1000 / FPS, updateLoadingTime, 0);
 }
 
 
@@ -361,7 +388,11 @@ void displayScene1() {
     int monitorY = SCREEN_HEIGHT / 2 - SCREEN_HEIGHT / 4 / 2; // Y-coordinate of the monitor
     int monitorWidth = SCREEN_WIDTH / 4; // Width of the monitor
     int monitorHeight = SCREEN_HEIGHT / 4; // Height of the monitor
+
+
+
     zoomInMonitor(monitorX, monitorY, monitorWidth, monitorHeight);
+    printf("Display Scene 1\n");
     glutSwapBuffers();
 }
 
@@ -396,6 +427,7 @@ void animateIntro(int value) {
     }
     if (frame == FPS * delaySecondsMonitor) {
         currentState = SCENE_1;
+        startTime = glutGet(GLUT_ELAPSED_TIME);
         glutTimerFunc(delay, animateScene1, 0);
         return; // Exit the function after transitioning to the monitor scene
     }
@@ -404,17 +436,7 @@ void animateIntro(int value) {
 }
 
 
-// Function to handle the timer for the loading screen animation
-void timer(int value) {
-    loadingTime++;
-    printf("Loading time: %d\n", loadingTime);
-    if (loadingTime >= 5 * FPS) { // 3 seconds with 30 FPS
-        printf("Loading complete\n");
-        loadingComplete = false;
-    }
-    glutPostRedisplay();
-    glutTimerFunc(1000 / FPS, timer, 0);
-}
+
 
 
 
@@ -454,10 +476,10 @@ int main(int argc, char** argv) {
     initGL();
 
     // Set the initial display function and start animation
-    glutDisplayFunc(displayBitsAndBytes);
-    glutTimerFunc(delay, animateIntro, 0);
-    glutTimerFunc(0, timer, 0); // Start the timer immediately
     glutDisplayFunc(display);
+    startTime = glutGet(GLUT_ELAPSED_TIME); // Record start time for accurate timing
+    glutTimerFunc(0, updateLoadingTime, 0);
+    glutTimerFunc(delay, animateIntro, 0);
 
 
     glutMainLoop();
